@@ -20,14 +20,14 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Digs out a cuboid region: turns towards the next block, walks to it if needed and
- * holds the vanilla attack key. Mining/walking speed is entirely vanilla.
+ * Digs out a cuboid region in a fixed order (top layer first, row by row like a snake),
+ * turns smoothly towards the next block, walks if it is out of reach and holds the vanilla
+ * attack key. Mining/walking speed is entirely vanilla.
  */
 public class AutoMineClient implements ClientModInitializer {
     public static KeyBinding menuKey;
 
     private static final double REACH = 4.0;
-    private static final float TURN_STEP = 35.0F;
 
     private static boolean enabled = false;
     private static BlockPos target = null;
@@ -44,18 +44,18 @@ public class AutoMineClient implements ClientModInitializer {
 
     public static boolean start(MinecraftClient mc) {
         if (!AutoMineConfig.hasRegion()) {
-            msg(mc, "AutoMine: set both corners first");
+            msg(mc, "AutoMine: спочатку познач обидва кути");
             return false;
         }
         if (AutoMineConfig.volume() > AutoMineConfig.MAX_VOLUME) {
-            msg(mc, "AutoMine: region too big (max " + AutoMineConfig.MAX_VOLUME + " blocks)");
+            msg(mc, "AutoMine: регіон завеликий (макс. " + AutoMineConfig.MAX_VOLUME + " блоків)");
             return false;
         }
         enabled = true;
         target = null;
         targetTicks = 0;
         skipped.clear();
-        msg(mc, "AutoMine: ON");
+        msg(mc, "AutoMine: УВІМК.");
         return true;
     }
 
@@ -87,26 +87,34 @@ public class AutoMineClient implements ClientModInitializer {
         return s.getHardness(mc.world, pos) >= 0; // skips bedrock etc.
     }
 
-    /** Top-most layer first; inside a layer the block closest to the player. */
+    /**
+     * Fixed order: top layer first; inside a layer row after row (z), direction alternates
+     * like a snake, so the next block is always right next to the previous one.
+     */
     private static BlockPos findTarget(MinecraftClient mc) {
-        Vec3d eye = mc.player.getCameraPosVec(1.0F);
-        for (int y = AutoMineConfig.maxY(); y >= AutoMineConfig.minY(); y--) {
-            BlockPos best = null;
-            double bestDist = Double.MAX_VALUE;
-            for (int x = AutoMineConfig.minX(); x <= AutoMineConfig.maxX(); x++) {
-                for (int z = AutoMineConfig.minZ(); z <= AutoMineConfig.maxZ(); z++) {
+        int minX = AutoMineConfig.minX(), maxX = AutoMineConfig.maxX();
+        int minZ = AutoMineConfig.minZ(), maxZ = AutoMineConfig.maxZ();
+        int layer = 0;
+        for (int y = AutoMineConfig.maxY(); y >= AutoMineConfig.minY(); y--, layer++) {
+            for (int zi = 0; zi <= maxZ - minZ; zi++) {
+                int z = minZ + zi;
+                boolean forward = ((layer + zi) % 2 == 0);
+                for (int xi = 0; xi <= maxX - minX; xi++) {
+                    int x = forward ? minX + xi : maxX - xi;
                     BlockPos p = new BlockPos(x, y, z);
-                    if (skipped.contains(p) || !mineable(mc, p)) continue;
-                    double d = eye.squaredDistanceTo(Vec3d.ofCenter(p));
-                    if (d < bestDist) {
-                        bestDist = d;
-                        best = p;
-                    }
+                    if (!skipped.contains(p) && mineable(mc, p)) return p;
                 }
             }
-            if (best != null) return best;
         }
         return null;
+    }
+
+    /** Smooth turning: fast when far from the goal, slow when close, never more than 10 degrees per tick. */
+    private static float ease(float diff) {
+        float abs = Math.abs(diff);
+        if (abs <= 1.0F) return diff;
+        float step = MathHelper.clamp(abs * 0.35F, 1.0F, 10.0F);
+        return Math.signum(diff) * Math.min(step, abs);
     }
 
     private void onTick(MinecraftClient client) {
@@ -132,12 +140,12 @@ public class AutoMineClient implements ClientModInitializer {
         ItemStack stack = client.player.getMainHandStack();
         if (AutoMineConfig.stopOnLowDurability && stack.isDamageable()
                 && stack.getMaxDamage() - stack.getDamage() < AutoMineConfig.minDurability) {
-            stop(client, "AutoMine: OFF (pickaxe almost broken)");
+            stop(client, "AutoMine: ВИМК. (кирка майже зламана)");
             return;
         }
 
         if (AutoMineConfig.stopOnFullInventory && client.player.inventory.getEmptySlot() == -1) {
-            stop(client, "AutoMine: OFF (inventory full)");
+            stop(client, "AutoMine: ВИМК. (інвентар повний)");
             return;
         }
 
@@ -150,7 +158,7 @@ public class AutoMineClient implements ClientModInitializer {
             target = findTarget(client);
             targetTicks = 0;
             if (target == null) {
-                stop(client, "AutoMine: cube finished");
+                stop(client, "AutoMine: куб викопано");
                 return;
             }
         }
@@ -161,32 +169,34 @@ public class AutoMineClient implements ClientModInitializer {
             return;
         }
 
-        // turn towards the target (limited degrees per tick)
+        // smooth turn towards the target
         Vec3d eye = client.player.getCameraPosVec(1.0F);
         Vec3d tc = Vec3d.ofCenter(target);
         double dx = tc.x - eye.x, dy = tc.y - eye.y, dz = tc.z - eye.z;
         double horiz = Math.sqrt(dx * dx + dz * dz);
 
-        float dyaw = 0F;
-        if (horiz > 0.15) {
-            float wantYaw = (float) (Math.atan2(dz, dx) * 180.0 / Math.PI) - 90.0F;
-            dyaw = MathHelper.wrapDegrees(wantYaw - client.player.yaw);
-            client.player.yaw += MathHelper.clamp(dyaw, -TURN_STEP, TURN_STEP);
+        float wantYaw = client.player.yaw;
+        if (horiz > 0.2) {
+            wantYaw = (float) (Math.atan2(dz, dx) * 180.0 / Math.PI) - 90.0F;
+            client.player.yaw += ease(MathHelper.wrapDegrees(wantYaw - client.player.yaw));
         }
         float wantPitch = (float) (-(Math.atan2(dy, horiz) * 180.0 / Math.PI));
-        float dpitch = wantPitch - client.player.pitch;
         client.player.pitch = MathHelper.clamp(
-                client.player.pitch + MathHelper.clamp(dpitch, -TURN_STEP, TURN_STEP), -90.0F, 90.0F);
+                client.player.pitch + ease(wantPitch - client.player.pitch), -90.0F, 90.0F);
 
-        // walk if the target is too far to reach
+        float yawLeft = Math.abs(MathHelper.wrapDegrees(wantYaw - client.player.yaw));
+        float pitchLeft = Math.abs(wantPitch - client.player.pitch);
+        boolean aimed = yawLeft <= 3.0F && pitchLeft <= 3.0F;
+
+        // walk only if the target is out of reach
         boolean far = eye.distanceTo(tc) > REACH;
-        client.options.keyForward.setPressed(far && Math.abs(dyaw) < 25.0F);
+        client.options.keyForward.setPressed(far && yawLeft < 30.0F);
         client.options.keyJump.setPressed(far && client.player.horizontalCollision && client.player.isOnGround());
 
-        // mine only what is in the region (never anything outside it)
+        // mine only while the camera is on target, and only blocks inside the region
         boolean attack = false;
         HitResult hr = client.crosshairTarget;
-        if (hr != null && hr.getType() == HitResult.Type.BLOCK) {
+        if (aimed && hr != null && hr.getType() == HitResult.Type.BLOCK) {
             BlockPos bp = ((BlockHitResult) hr).getBlockPos();
             attack = AutoMineConfig.inRegion(bp) && mineable(client, bp);
         }
