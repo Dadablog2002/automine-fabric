@@ -1,1 +1,0 @@
-# automine-fabric
