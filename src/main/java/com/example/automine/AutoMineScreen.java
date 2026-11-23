@@ -11,7 +11,7 @@ import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 
 public class AutoMineScreen extends Screen {
-    private ButtonWidget startBtn, dur, durMinus, durPlus, inv;
+    private ButtonWidget startBtn, dur, durMinus, durPlus, inv, autoDrill, drillNow;
     private int infoY;
 
     public AutoMineScreen() {
@@ -88,6 +88,16 @@ public class AutoMineScreen extends Screen {
             refresh();
         }));
 
+        y += 24;
+        autoDrill = this.addButton(new ButtonWidget(L, y, 154, 20, Text.of(""), b -> {
+            AutoMineConfig.autoDrillToggle = !AutoMineConfig.autoDrillToggle;
+            refresh();
+        }));
+        drillNow = this.addButton(new ButtonWidget(L + 156, y, 154, 20, Text.of(""), b -> {
+            AutoMineConfig.drillStartOn = !AutoMineConfig.drillStartOn;
+            refresh();
+        }));
+
         y += 28;
         this.addButton(new ButtonWidget(L, y, 310, 20, new LiteralText("Готово"), b -> this.onClose()));
         refresh();
@@ -99,6 +109,9 @@ public class AutoMineScreen extends Screen {
                 + ": " + onOff(AutoMineConfig.stopOnLowDurability)));
         inv.setMessage(new LiteralText("Стоп, якщо інвентар повний: " + onOff(AutoMineConfig.stopOnFullInventory)));
         durMinus.active = durPlus.active = AutoMineConfig.stopOnLowDurability;
+        autoDrill.setMessage(new LiteralText("Бур вимк. для спуску: " + onOff(AutoMineConfig.autoDrillToggle)));
+        drillNow.setMessage(new LiteralText("Бур зараз: " + (AutoMineConfig.drillStartOn ? "УВІМК." : "ВИМК.")));
+        drillNow.active = AutoMineConfig.autoDrillToggle;
     }
 
     private static String fmt(BlockPos p) {

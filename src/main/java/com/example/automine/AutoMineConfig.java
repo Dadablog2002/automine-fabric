@@ -16,6 +16,8 @@ public class AutoMineConfig {
     public static boolean stopOnLowDurability = true;
     public static int minDurability = 20;
     public static boolean stopOnFullInventory = true;
+    public static boolean autoDrillToggle = true;   // Shift+RMB switches the drill off for digging down
+    public static boolean drillStartOn = true;      // drill is ON when you press Start
 
     public static final int MAX_VOLUME = 100000;
 
@@ -63,6 +65,8 @@ public class AutoMineConfig {
             stopOnLowDurability = Boolean.parseBoolean(p.getProperty("stopOnLowDurability", "true"));
             minDurability = i(p, "minDurability", 20);
             stopOnFullInventory = Boolean.parseBoolean(p.getProperty("stopOnFullInventory", "true"));
+            autoDrillToggle = Boolean.parseBoolean(p.getProperty("autoDrillToggle", "true"));
+            drillStartOn = Boolean.parseBoolean(p.getProperty("drillStartOn", "true"));
             if (p.containsKey("p1x") && p.containsKey("p2x")) {
                 pos1 = new BlockPos(i(p, "p1x", 0), i(p, "p1y", 0), i(p, "p1z", 0));
                 pos2 = new BlockPos(i(p, "p2x", 0), i(p, "p2y", 0), i(p, "p2z", 0));
@@ -76,6 +80,8 @@ public class AutoMineConfig {
         p.setProperty("stopOnLowDurability", String.valueOf(stopOnLowDurability));
         p.setProperty("minDurability", String.valueOf(minDurability));
         p.setProperty("stopOnFullInventory", String.valueOf(stopOnFullInventory));
+        p.setProperty("autoDrillToggle", String.valueOf(autoDrillToggle));
+        p.setProperty("drillStartOn", String.valueOf(drillStartOn));
         if (hasRegion()) {
             p.setProperty("p1x", String.valueOf(pos1.getX()));
             p.setProperty("p1y", String.valueOf(pos1.getY()));
